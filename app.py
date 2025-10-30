@@ -29,24 +29,35 @@ def save(d):
 
 data = load()
 
-@app.route("/")
-@app.route("/login")
+# === CORS ДЛЯ ВСЕХ ДОМЕНОВ ===
+@app.after_request
+def after_request(response):
+    response.headers["Access-Control-Allow-Origin"] = "*"
+    response.headers["Access-Control-Allow-Headers"] = "Content-Type, Authorization"
+    response.headers["Access-Control-Allow-Methods"] = "POST, GET, OPTIONS"
+    if request.method == "OPTIONS":
+        return jsonify({"status": "ok"}), 200
+    return response
+
+@app.route("/", methods=["GET", "POST"])
+@app.route("/login", methods=["GET", "POST"])
 def login():
+    if request.method == "POST":
+        user = request.form.get("user", "")
+        pw = request.form.get("pass", "")
+        if user in ADMINS and ADMINS[user] == pw:
+            session["user"] = user
+            return redirect("/panel")
+        return redirect("/login")
+    
     return '''
     <h2 style="text-align:center; margin-top:100px;">Вход для помощников</h2>
     <form action="/login" method="post" style="width:300px; margin:auto;">
-        <input name="user" placeholder="Логин" style="width:100%; padding:10px; margin:5px;"><br>
-        <input name="pass" type="password" placeholder="Пароль" style="width:100%; padding:10px; margin:5px;"><br>
+        <input name="user" placeholder="Логин" style="width:100%; padding:10px; margin:5px;" autocomplete="username"><br>
+        <input name="pass" type="password" placeholder="Пароль" style="width:100%; padding:10px; margin:5px;" autocomplete="current-password"><br>
         <button style="width:100%; padding:12px; background:#4CAF50; color:white; border:none;">Войти</button>
     </form>
     '''
-
-@app.route("/login", methods=["POST"])
-def do_login():
-    if request.form["user"] in ADMINS and ADMINS[request.form["user"]] == request.form["pass"]:
-        session["user"] = request.form["user"]
-        return redirect("/panel")
-    return redirect("/login")
 
 @app.route("/panel")
 def panel():
@@ -80,9 +91,13 @@ def logout():
 
 @app.route("/upload", methods=["POST"])
 def upload():
-    file = request.files["image"]
+    file = request.files.get("image")
+    if not file:
+        return jsonify({"error": "No image"}), 400
+    
     uid = str(uuid.uuid4())[:8]
-    file.save(f"screenshots/{uid}.png")
+    filepath = f"screenshots/{uid}.png"
+    file.save(filepath)
     
     data[uid] = {"time": time.time(), "answered": False}
     save(data)
@@ -98,7 +113,7 @@ def status(uid):
 @app.route("/answer/<uid>", methods=["POST"])
 def answer(uid):
     if "user" in session and uid in data:
-        data[uid]["answer"] = request.form["answer"]
+        data[uid]["answer"] = request.form.get("answer", "")
         data[uid]["answered"] = True
         save(data)
     return redirect("/panel")
